@@ -8,6 +8,12 @@ from pydantic import BaseModel
 from fastapi.templating import Jinja2Templates
 
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo import MongoClient, mongo_client
+
+client = MongoClient('mongodb://root:rootpassword@127.0.0.1:27017')
+db = client.chat_app
+
+
 
 templates = Jinja2Templates(directory="templates")
 
@@ -60,6 +66,7 @@ async def chat(websocket: WebSocket):
             while True:
                 data = await websocket.receive_json()
                 await manager.broadcast(data)
+                db.chat_messages.insert_one(data)
         except WebSocketDisconnect:
             manager.disconnect(websocket, sender)
             response['message'] = "left"
@@ -68,6 +75,10 @@ async def chat(websocket: WebSocket):
 @app.get("/api/current_user")
 def get_user(request: Request):
     return request.cookies.get("X-Authorization")
+
+@app.get('/api/messages')
+def get_messages(request: Request):
+    return list(db.chat_messages.find({}, {'_id':0}))
 
 @app.post("/api/register")
 def register_user(user: RegisterValidator, response: Response):
