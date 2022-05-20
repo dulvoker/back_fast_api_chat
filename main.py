@@ -10,6 +10,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient, mongo_client
 
+from datetime import datetime
+
 client = MongoClient('mongodb://root:rootpassword@127.0.0.1:27017')
 db = client.chat_app
 
@@ -21,6 +23,7 @@ app = FastAPI()
 
 class RegisterValidator(BaseModel):
     username: str
+    avatarURL: str
 
 origins = ["*"]
 
@@ -59,12 +62,14 @@ async def chat(websocket: WebSocket):
         await manager.connect(websocket, sender)
         response = {
             "sender": sender,
-            "message": "got connected"
+            "message": "got connected",
+            "avatarURL": websocket.cookies.get("X-Avatar-URL")
         }
         await manager.broadcast(response)
         try:
             while True:
                 data = await websocket.receive_json()
+                data['date'] = datetime.now().timestamp()
                 await manager.broadcast(data)
                 db.chat_messages.insert_one(data)
         except WebSocketDisconnect:
@@ -74,7 +79,9 @@ async def chat(websocket: WebSocket):
 
 @app.get("/api/current_user")
 def get_user(request: Request):
-    return request.cookies.get("X-Authorization")
+    return {"username": request.cookies.get("X-Authorization"),
+            "avatarURL": request.cookies.get("X-Avatar-URL")
+        }
 
 @app.get('/api/messages')
 def get_messages(request: Request):
@@ -82,6 +89,7 @@ def get_messages(request: Request):
 
 @app.post("/api/register")
 def register_user(user: RegisterValidator, response: Response):
+    response.set_cookie(key="X-Avatar-URL", value=user.avatarURL, httponly=True)
     response.set_cookie(key="X-Authorization", value=user.username, httponly=True)
 
 @app.get("/")
